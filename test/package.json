@@ -1,0 +1,17 @@
+{
+  "name": "ews-compliance-tests",
+  "private": true,
+  "type": "module",
+  "description": "DCI Early Warning System (EWS) API compliance test suite (Cucumber)",
+  "scripts": {
+    "test": "cucumber-js",
+    "test:data": "cucumber-js --tags @data"
+  },
+  "dependencies": {
+    "@cucumber/cucumber": "^10.9.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "chai": "^4.5.0",
+    "yaml": "^2.9.1"
+  }
+}

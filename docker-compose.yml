@@ -1,0 +1,20 @@
+version: '3.3'
+
+services:
+  ews-mocks:
+    image: dci-ews-mocks
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    ports:
+      - "3333:3003" # EWS endpoints (subscribe, unsubscribe, collections/alerts, ...)
+      - "3334:3004" # SP endpoints (notify, on-subscribe, on-unsubscribe, data/... SDMX)
+    extra_hosts:
+      # lets the mock call back the test runner's listener (header.sender_uri)
+      - "host.docker.internal:host-gateway"
+    networks:
+      - web
+
+networks:
+  web:
+    driver: bridge

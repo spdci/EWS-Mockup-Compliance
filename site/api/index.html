@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EWS API Reference</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui.css">
+  <style>
+    body { margin: 0; background: #fff; }
+    .back { display: block; padding: 10px 16px; font: 14px system-ui, sans-serif; border-bottom: 1px solid #e2e1dc; }
+    .back a { color: #1f5f8b; }
+  </style>
+</head>
+<body>
+  <div class="back"><a href="../">← EWS compliance</a></div>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-standalone-preset.js"></script>
+  <script>
+    // Two specs: the DCI EWS interface (derived by the suite), and the same API on the local mock paths/ports.
+    // ?spec=mock opens the mock spec directly.
+    const mockFirst = new URLSearchParams(location.search).get('spec') === 'mock';
+    window.ui = SwaggerUIBundle({
+      urls: [
+        { url: 'ews_api_v1.0.0.yaml', name: 'DCI EWS interface (standard, derived)' },
+        { url: 'ews_api_v1.0.0-mock.yaml', name: 'EWS mock (local, try it out)' },
+      ],
+      'urls.primaryName': mockFirst ? 'EWS mock (local, try it out)' : 'DCI EWS interface (standard, derived)',
+      dom_id: '#swagger-ui',
+      deepLinking: true,
+      presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+      layout: 'StandaloneLayout',
+    });
+  </script>
+</body>
+</html>

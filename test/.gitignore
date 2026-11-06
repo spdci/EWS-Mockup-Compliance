@@ -1,0 +1,4 @@
+node_modules/
+# Reports of local and CI runs (the committed example_result.* are kept)
+result/cucumber.json
+result/ews_compliance*

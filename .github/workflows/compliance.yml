@@ -1,0 +1,134 @@
+name: EWS compliance
+
+# Runs the DCI EWS compliance suite against the bundled Mockoon mocks on every push and pull
+# request: a pass / fail check, a per-feature summary on the run page, and the HTML / JUnit
+# reports as a downloadable artifact. Runs on main also publish a site to GitHub Pages
+# (https://spdci.github.io/EWS-Mockup-Compliance/), passing or not: the HTML report of the run and
+# a Swagger UI of the EWS interface (api/; api/?spec=mock is the same API on the local mocks). Pull
+# requests attach the same site as the ews-compliance-site artifact.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Superseded pull request runs are cancelled; runs on main finish so every report is published.
+concurrency:
+  group: compliance-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  compliance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      pages: ${{ steps.pages.outcome }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: test/package-lock.json
+
+      - name: Install test dependencies
+        working-directory: test
+        run: npm ci --loglevel=error
+
+      # The mocks and the derived OpenAPI are generated from the test schemas and fixtures: they must be committed up to date.
+      - name: Check the mocks and the OpenAPI match the test schemas and fixtures
+        run: |
+          node mock/generate-mocks.mjs
+          node mock/generate-openapi.mjs
+          git diff --exit-code -- mockoon-ews.json mockoon-sp.json docs/openapi/ews_api_v1.0.0.yaml \
+            || { echo "::error::mockoon-*.json or docs/openapi are out of date: run 'node mock/generate-mocks.mjs && node mock/generate-openapi.mjs' and commit the result"; exit 1; }
+
+      - name: Start the EWS (3333) and SP (3334) mocks
+        run: |
+          npm install -g @mockoon/cli@9.2.0 --loglevel=error
+          mockoon-cli start --data mockoon-ews.json mockoon-sp.json --port 3333 3334 --disable-log-to-file > mockoon.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:3333/healthcheck > /dev/null && curl -sf http://127.0.0.1:3334/healthcheck > /dev/null && exit 0
+            sleep 1
+          done
+          echo "::error::The mocks did not start"; cat mockoon.log; exit 1
+
+      - name: Run the compliance suite
+        working-directory: test
+        run: >
+          npx cucumber-js
+          --format progress
+          --format json:result/cucumber.json
+          --format junit:result/ews_compliance.xml
+          --format html:result/ews_compliance_report.html
+
+      - name: Write the job summary
+        if: always()
+        working-directory: test
+        run: |
+          if [ -f result/cucumber.json ]; then
+            node ci/summary.mjs result/cucumber.json >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## DCI EWS compliance: the suite did not run" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ews-compliance-report
+          path: |
+            test/result/ews_compliance_report.html
+            test/result/ews_compliance.xml
+            test/result/cucumber.json
+            mockoon.log
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Build the site (landing page, test report, Swagger UI)
+        if: ${{ !cancelled() && hashFiles('test/result/ews_compliance_report.html') != '' }}
+        run: >
+          node site/build-site.mjs --out "$RUNNER_TEMP/site"
+          --report test/result/ews_compliance_report.html
+          --junit test/result/ews_compliance.xml
+
+      - name: Upload the site (preview)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && hashFiles('test/result/ews_compliance_report.html') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ews-compliance-site
+          path: ${{ runner.temp }}/site
+          retention-days: 14
+
+      # The github-pages environment only accepts deployments from main.
+      - name: Upload the Pages site
+        id: pages
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && hashFiles('test/result/ews_compliance_report.html') != '' }}
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ runner.temp }}/site
+
+  publish:
+    needs: compliance
+    if: ${{ !cancelled() && needs.compliance.outputs.pages == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the report to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+      - name: Link the report from the job summary
+        run: |
+          echo "Latest compliance report of main: ${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
